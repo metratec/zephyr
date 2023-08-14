@@ -383,7 +383,6 @@ static int bmp581_sample_fetch(const struct device *dev, enum sensor_channel cha
 static int bmp581_channel_get(const struct device *dev, enum sensor_channel chan,
 			      struct sensor_value *val)
 {
-	static const uint8_t FIXED_PRECISION_COEFFICIENT = 100; /* must be power of 10 */
 	struct bmp581_data *drv = (struct bmp581_data *)dev->data;
 
 	if (val == NULL) {
