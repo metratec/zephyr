@@ -42,59 +42,59 @@
 
 #define BMP5_GET_BITS_POS_0(reg_data, bitname) (reg_data & (bitname##_MSK))
 
-#define BMP5_OK	     0
+#define BMP5_OK      0
 #define BMP5_ENABLE  1u
 #define BMP5_DISABLE 0u
 
 /* BMP5 Registers */
-#define BMP5_REG_CHIP_ID	 0x01
-#define BMP5_REG_REV_ID		 0x02
-#define BMP5_REG_CHIP_STATUS	 0x11
-#define BMP5_REG_DRIVE_CONFIG	 0x13
-#define BMP5_REG_INT_CONFIG	 0x14
-#define BMP5_REG_INT_SOURCE	 0x15
-#define BMP5_REG_FIFO_CONFIG	 0x16
-#define BMP5_REG_FIFO_COUNT	 0x17
-#define BMP5_REG_FIFO_SEL	 0x18
-#define BMP5_REG_TEMP_DATA_XLSB	 0x1D
-#define BMP5_REG_TEMP_DATA_LSB	 0x1E
-#define BMP5_REG_TEMP_DATA_MSB	 0x1F
+#define BMP5_REG_CHIP_ID         0x01
+#define BMP5_REG_REV_ID          0x02
+#define BMP5_REG_CHIP_STATUS     0x11
+#define BMP5_REG_DRIVE_CONFIG    0x13
+#define BMP5_REG_INT_CONFIG      0x14
+#define BMP5_REG_INT_SOURCE      0x15
+#define BMP5_REG_FIFO_CONFIG     0x16
+#define BMP5_REG_FIFO_COUNT      0x17
+#define BMP5_REG_FIFO_SEL        0x18
+#define BMP5_REG_TEMP_DATA_XLSB  0x1D
+#define BMP5_REG_TEMP_DATA_LSB   0x1E
+#define BMP5_REG_TEMP_DATA_MSB   0x1F
 #define BMP5_REG_PRESS_DATA_XLSB 0x20
-#define BMP5_REG_PRESS_DATA_LSB	 0x21
-#define BMP5_REG_PRESS_DATA_MSB	 0x22
-#define BMP5_REG_INT_STATUS	 0x27
-#define BMP5_REG_STATUS		 0x28
-#define BMP5_REG_FIFO_DATA	 0x29
-#define BMP5_REG_NVM_ADDR	 0x2B
-#define BMP5_REG_NVM_DATA_LSB	 0x2C
-#define BMP5_REG_NVM_DATA_MSB	 0x2D
-#define BMP5_REG_DSP_CONFIG	 0x30
-#define BMP5_REG_DSP_IIR	 0x31
-#define BMP5_REG_OOR_THR_P_LSB	 0x32
-#define BMP5_REG_OOR_THR_P_MSB	 0x33
-#define BMP5_REG_OOR_RANGE	 0x34
-#define BMP5_REG_OOR_CONFIG	 0x35
-#define BMP5_REG_OSR_CONFIG	 0x36
-#define BMP5_REG_ODR_CONFIG	 0x37
-#define BMP5_REG_OSR_EFF	 0x38
-#define BMP5_REG_CMD		 0x7E
+#define BMP5_REG_PRESS_DATA_LSB  0x21
+#define BMP5_REG_PRESS_DATA_MSB  0x22
+#define BMP5_REG_INT_STATUS      0x27
+#define BMP5_REG_STATUS          0x28
+#define BMP5_REG_FIFO_DATA       0x29
+#define BMP5_REG_NVM_ADDR        0x2B
+#define BMP5_REG_NVM_DATA_LSB    0x2C
+#define BMP5_REG_NVM_DATA_MSB    0x2D
+#define BMP5_REG_DSP_CONFIG      0x30
+#define BMP5_REG_DSP_IIR         0x31
+#define BMP5_REG_OOR_THR_P_LSB   0x32
+#define BMP5_REG_OOR_THR_P_MSB   0x33
+#define BMP5_REG_OOR_RANGE       0x34
+#define BMP5_REG_OOR_CONFIG      0x35
+#define BMP5_REG_OSR_CONFIG      0x36
+#define BMP5_REG_ODR_CONFIG      0x37
+#define BMP5_REG_OSR_EFF         0x38
+#define BMP5_REG_CMD             0x7E
 /* endof BMP5 Registers */
 
 /* Chip id of BMP5 */
 #define BMP5_CHIP_ID_PRIM 0x50
 #define BMP5_CHIP_ID_SEC  0x51
 
-#define BMP5_E_NULL_PTR		 -1
-#define BMP5_E_COM_FAIL		 -2
-#define BMP5_E_DEV_NOT_FOUND	 -3
-#define BMP5_E_INVALID_CHIP_ID	 -4
-#define BMP5_E_POWER_UP		 -5
-#define BMP5_E_POR_SOFTRESET	 -6
+#define BMP5_E_NULL_PTR          -1
+#define BMP5_E_COM_FAIL          -2
+#define BMP5_E_DEV_NOT_FOUND     -3
+#define BMP5_E_INVALID_CHIP_ID   -4
+#define BMP5_E_POWER_UP          -5
+#define BMP5_E_POR_SOFTRESET     -6
 #define BMP5_E_INVALID_POWERMODE -7
 #define BMP5_E_INVALID_THRESHOLD -8
-#define BMP5_E_FIFO_FRAME_EMPTY	 -9
-#define BMP5_E_NVM_INVALID_ADDR	 -10
-#define BMP5_E_NVM_NOT_READY	 -11
+#define BMP5_E_FIFO_FRAME_EMPTY  -9
+#define BMP5_E_NVM_INVALID_ADDR  -10
+#define BMP5_E_NVM_NOT_READY     -11
 
 /* I2C addresses */
 #define BMP5_I2C_ADDR_PRIM 0x46
@@ -109,7 +109,7 @@
 
 /* Delay definition */
 #define BMP5_DELAY_US_SOFT_RESET      2000
-#define BMP5_DELAY_US_STANDBY	      2500
+#define BMP5_DELAY_US_STANDBY         2500
 #define BMP5_DELAY_US_NVM_READY_READ  800
 #define BMP5_DELAY_US_NVM_READY_WRITE 10000
 
@@ -117,7 +117,7 @@
 #define BMP5_SOFT_RESET_CMD 0xB6
 
 /*! NVM command */
-#define BMP5_NVM_FIRST_CMND	   0x5D
+#define BMP5_NVM_FIRST_CMND        0x5D
 #define BMP5_NVM_READ_ENABLE_CMND  0xA5
 #define BMP5_NVM_WRITE_ENABLE_CMND 0xA0
 
@@ -126,38 +126,38 @@
 #define BMP5_DEEP_DISABLED 1
 
 /*! Fifo frame configuration */
-#define BMP5_FIFO_EMPTY			 0X7F
+#define BMP5_FIFO_EMPTY                  0X7F
 #define BMP5_FIFO_MAX_THRESHOLD_P_T_MODE 0x0F
-#define BMP5_FIFO_MAX_THRESHOLD_P_MODE	 0x1F
+#define BMP5_FIFO_MAX_THRESHOLD_P_MODE   0x1F
 
 /* Macro is used to bypass both iir_t and iir_p together */
 #define BMP5_IIR_BYPASS 0xC0
 
 /* Pressure Out-of-range count limit */
-#define BMP5_OOR_COUNT_LIMIT_1	0x00
-#define BMP5_OOR_COUNT_LIMIT_3	0x01
-#define BMP5_OOR_COUNT_LIMIT_7	0x02
+#define BMP5_OOR_COUNT_LIMIT_1  0x00
+#define BMP5_OOR_COUNT_LIMIT_3  0x01
+#define BMP5_OOR_COUNT_LIMIT_7  0x02
 #define BMP5_OOR_COUNT_LIMIT_15 0x03
 
 /* Interrupt configurations */
 #define BMP5_INT_MODE_PULSED  0
 #define BMP5_INT_MODE_LATCHED 1
 
-#define BMP5_INT_POL_ACTIVE_LOW	 0
+#define BMP5_INT_POL_ACTIVE_LOW  0
 #define BMP5_INT_POL_ACTIVE_HIGH 1
 
 #define BMP5_INT_OD_PUSHPULL  0
 #define BMP5_INT_OD_OPENDRAIN 1
 
 /* NVM and Interrupt status asserted macros */
-#define BMP5_INT_ASSERTED_DRDY			 0x01
-#define BMP5_INT_ASSERTED_FIFO_FULL		 0x02
-#define BMP5_INT_ASSERTED_FIFO_THRES		 0x04
-#define BMP5_INT_ASSERTED_PRESSURE_OOR		 0x08
+#define BMP5_INT_ASSERTED_DRDY                   0x01
+#define BMP5_INT_ASSERTED_FIFO_FULL              0x02
+#define BMP5_INT_ASSERTED_FIFO_THRES             0x04
+#define BMP5_INT_ASSERTED_PRESSURE_OOR           0x08
 #define BMP5_INT_ASSERTED_POR_SOFTRESET_COMPLETE 0x10
-#define BMP5_INT_NVM_RDY			 0x02
-#define BMP5_INT_NVM_ERR			 0x04
-#define BMP5_INT_NVM_CMD_ERR			 0x08
+#define BMP5_INT_NVM_RDY                         0x02
+#define BMP5_INT_NVM_ERR                         0x04
+#define BMP5_INT_NVM_CMD_ERR                     0x08
 
 /* Interrupt configurations */
 #define BMP5_INT_MODE_MSK 0x01

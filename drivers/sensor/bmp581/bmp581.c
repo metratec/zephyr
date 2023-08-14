@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "bmp581.h"
-
 #include <math.h>
 
 #include <zephyr/device.h>
@@ -14,6 +12,8 @@
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/init.h>
 #include <zephyr/logging/log.h>
+
+#include "bmp581.h"
 
 LOG_MODULE_REGISTER(bmp581, CONFIG_SENSOR_LOG_LEVEL);
 
@@ -26,7 +26,7 @@ static int get_nvm_status(uint8_t *nvm_status, struct bmp581_data *drv);
 static int get_interrupt_status(uint8_t *int_status, struct bmp581_data *drv);
 static int validate_chip_id(struct bmp581_data *drv);
 static int get_osr_odr_press_config(struct bmp581_osr_odr_press_config *osr_odr_press_cfg,
-					struct bmp581_data *drv);
+				    struct bmp581_data *drv);
 static int set_osr_config(const struct sensor_value *osr, enum sensor_channel chan,
 			  struct bmp581_data *drv);
 static int set_odr_config(const struct sensor_value *odr, struct bmp581_data *drv);
@@ -224,7 +224,7 @@ static int validate_chip_id(struct bmp581_data *drv)
  *  pressure and ODR configuration along with pressure enable.
  */
 static int get_osr_odr_press_config(struct bmp581_osr_odr_press_config *osr_odr_press_cfg,
-					struct bmp581_data *drv)
+				    struct bmp581_data *drv)
 {
 	/* Variable to store the function result */
 	int8_t rslt = 0;
@@ -361,7 +361,7 @@ static int bmp581_sample_fetch(const struct device *dev, enum sensor_channel cha
 		 */
 
 		sensor_value_from_double(&drv->last_sample.temperature,
-								(raw_temperature / 65536.0));
+					 (raw_temperature / 65536.0));
 
 		if (drv->osr_odr_press_config.press_en == BMP5_ENABLE) {
 			uint32_t raw_pressure = (uint32_t)((uint32_t)(data[5] << 16) |
@@ -381,7 +381,7 @@ static int bmp581_sample_fetch(const struct device *dev, enum sensor_channel cha
 }
 
 static int bmp581_channel_get(const struct device *dev, enum sensor_channel chan,
-				  struct sensor_value *val)
+			      struct sensor_value *val)
 {
 	static const uint8_t FIXED_PRECISION_COEFFICIENT = 100; /* must be power of 10 */
 	struct bmp581_data *drv = (struct bmp581_data *)dev->data;
@@ -400,9 +400,8 @@ static int bmp581_channel_get(const struct device *dev, enum sensor_channel chan
 		 *	Following formula calculates the pressure in meters
 		 */
 		double last_pressure = sensor_value_to_double(&drv->last_sample.pressure);
-		double altitude = 44307.69 * (1.0 - pow(
-				last_pressure / sensor_value_to_double(val), 0.1903
-			));
+		double altitude =
+			44307.69 * (1.0 - pow(last_pressure / sensor_value_to_double(val), 0.1903));
 
 		sensor_value_from_double(val, altitude);
 
@@ -487,8 +486,7 @@ static int bmp581_attr_set(const struct device *dev, enum sensor_channel chan,
 	case SENSOR_ATTR_OVERSAMPLING:
 		ret = set_osr_config(val, chan, drv);
 		break;
-	case BMP5_ATTR_POWER_MODE:
-	{
+	case BMP5_ATTR_POWER_MODE: {
 		enum bmp5_powermode powermode = (enum bmp5_powermode)val->val1;
 
 		ret = set_power_mode(powermode, drv);
@@ -541,25 +539,28 @@ static int bmp581_init(const struct device *dev)
 			BMP5_CHIP_ID_PRIM, BMP5_CHIP_ID_SEC);
 		return BMP5_E_INVALID_CHIP_ID;
 	}
+
 	return ret;
 }
 
-static const struct sensor_driver_api bmp581_driver_api = {.sample_fetch = bmp581_sample_fetch,
-							   .channel_get = bmp581_channel_get,
-							   .attr_set = bmp581_attr_set};
+static const struct sensor_driver_api bmp581_driver_api = {
+	.sample_fetch = bmp581_sample_fetch,
+	.channel_get = bmp581_channel_get,
+	.attr_set = bmp581_attr_set,
+};
 
 #define BMP581_CONFIG(i)                                                                           \
 	static const struct bmp581_config bmp581_config_##i = {                                    \
-		.i2c = I2C_DT_SPEC_INST_GET(i),                                              \
+		.i2c = I2C_DT_SPEC_INST_GET(i),                                                    \
 		.i2c_addr = DT_INST_REG_ADDR(i),                                                   \
 	}
 
-#define BMP581_INIT(i) \
-	static struct bmp581_data bmp581_data_##i; \
-	BMP581_CONFIG(i); \
-						\
-	SENSOR_DEVICE_DT_INST_DEFINE(i, bmp581_init, NULL, \
-				&bmp581_data_##i, &bmp581_config_##i, \
-				POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &bmp581_driver_api);
+#define BMP581_INIT(i)                                                                             \
+	static struct bmp581_data bmp581_data_##i;                                                 \
+	BMP581_CONFIG(i);                                                                          \
+                                                                                                   \
+	SENSOR_DEVICE_DT_INST_DEFINE(i, bmp581_init, NULL, &bmp581_data_##i, &bmp581_config_##i,   \
+				     POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,                     \
+				     &bmp581_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(BMP581_INIT)
