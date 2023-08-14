@@ -37,12 +37,12 @@ static int set_power_mode(enum bmp5_powermode powermode, struct bmp581_data *drv
 
 int reg_read(uint8_t reg, uint8_t *data, uint16_t length, struct bmp581_data *drv)
 {
-	return i2c_burst_read_dt(&drv->i2c, reg, data, length);
+	return i2c_burst_read_dt(drv->i2c, reg, data, length);
 }
 
 int reg_write(uint8_t reg, const uint8_t *data, uint16_t length, struct bmp581_data *drv)
 {
-	return i2c_burst_write_dt(&drv->i2c, reg, data, length);
+	return i2c_burst_write_dt(drv->i2c, reg, data, length);
 }
 
 static int set_power_mode(enum bmp5_powermode powermode, struct bmp581_data *drv)
@@ -513,9 +513,7 @@ static int bmp581_init(const struct device *dev)
 	memset(&drv->osr_odr_press_config, 0, sizeof(drv->osr_odr_press_config));
 	memset(&drv->last_sample, 0, sizeof(drv->last_sample));
 
-	drv->i2c = cfg->i2c;
-
-	drv->i2c_addr = cfg->i2c_addr;
+	drv->i2c = &cfg->i2c;
 
 	soft_reset(drv);
 
@@ -552,7 +550,6 @@ static const struct sensor_driver_api bmp581_driver_api = {
 #define BMP581_CONFIG(i)                                                                           \
 	static const struct bmp581_config bmp581_config_##i = {                                    \
 		.i2c = I2C_DT_SPEC_INST_GET(i),                                                    \
-		.i2c_addr = DT_INST_REG_ADDR(i),                                                   \
 	}
 
 #define BMP581_INIT(i)                                                                             \

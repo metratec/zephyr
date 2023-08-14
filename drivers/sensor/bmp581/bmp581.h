@@ -318,8 +318,7 @@ struct bmp581_sample {
 };
 
 struct bmp581_data {
-	struct i2c_dt_spec i2c;
-	uint8_t i2c_addr;
+	const struct i2c_dt_spec *i2c;
 	uint8_t chip_id;
 	struct bmp581_sample last_sample;
 	struct bmp581_osr_odr_press_config osr_odr_press_config;
@@ -327,7 +326,6 @@ struct bmp581_data {
 
 struct bmp581_config {
 	struct i2c_dt_spec i2c;
-	uint16_t i2c_addr;
 };
 
 int reg_read(uint8_t reg, uint8_t *data, uint16_t length, struct bmp581_data *drv);
