@@ -322,17 +322,15 @@ static int soft_reset(struct bmp581_data *drv)
 
 	if (ret == BMP5_OK) {
 		k_usleep(BMP5_DELAY_US_SOFT_RESET);
+		ret = get_interrupt_status(&int_status, drv);
 		if (ret == BMP5_OK) {
-			ret = reg_read(BMP5_REG_INT_STATUS, &int_status, 1, drv);
-			if (ret == BMP5_OK) {
-				if (int_status & BMP5_INT_ASSERTED_POR_SOFTRESET_COMPLETE) {
-					ret = BMP5_OK;
-				} else {
-					ret = BMP5_E_POR_SOFTRESET;
-				}
+			if (int_status & BMP5_INT_ASSERTED_POR_SOFTRESET_COMPLETE) {
+				ret = BMP5_OK;
 			} else {
-				ret = BMP5_E_NULL_PTR;
+				ret = BMP5_E_POR_SOFTRESET;
 			}
+		} else {
+			ret = BMP5_E_NULL_PTR;
 		}
 	} else {
 		LOG_DBG("Failed perform soft-reset.");
