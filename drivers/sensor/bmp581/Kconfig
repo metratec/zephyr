@@ -9,4 +9,21 @@ config BMP581
 	depends on DT_HAS_BOSCH_BMP581_ENABLED
 	select I2C
 	help
-	  Enable BMP581 altitude sensor
+	  Enable BMP581 temperature/pressure/altitude sensor
+
+if BMP581
+	choice BMP581_ALTITUDE_CALC
+		prompt "BMP581 altitude calculation methode"
+		default BMP581_ALTITUDE_CALC_MATH if NEWLIB_LIBC
+		default BMP581_ALTITUDE_CALC_LUT
+
+		config BMP581_ALTITUDE_CALC_MATH
+			bool "Calculate altitude using floating point arithmetics. Requires `pow()` that isn't available in minimal libc"
+
+		config BMP581_ALTITUDE_CALC_LUT
+			bool "Interpolate between the values from a lookup table"
+
+		config BMP581_ALTITUDE_CALC_OFF
+			bool "disable altitude calculation"
+	endchoice
+endif

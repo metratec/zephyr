@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022 Badgerd Technologies B.V.
+ * Copyright (c) 2023 Metratec GmbH
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -34,6 +35,32 @@ static int soft_reset(struct bmp581_data *drv);
 static int set_iir_config(const struct sensor_value *iir, struct bmp581_data *drv);
 static int get_power_mode(enum bmp5_powermode *powermode, struct bmp581_data *drv);
 static int set_power_mode(enum bmp5_powermode powermode, struct bmp581_data *drv);
+
+#if IS_ENABLED(CONFIG_BMP581_ALTITUDE_CALC_LUT)
+struct altutide_lut {
+	/* in Pa */
+	double pressure;
+	/* in mm */
+	int32_t altitude;
+};
+
+struct altutide_lut altitude_lut[] = {
+	{30000, 9160758},   {32500, 8621298},   {35000, 8114456},   {37500, 7636129},
+	{40000, 7182964},   {42500, 6752181},   {45000, 6341450},   {47500, 5948800},
+	{50000, 5572541},   {52500, 5211219},   {55000, 4863571},   {57500, 4528491},
+	{60000, 4205007},   {62500, 3892259},   {65000, 3589482},   {67500, 3295992},
+	{70000, 3011175},   {72500, 2734479},   {75000, 2465404},   {77500, 2203496},
+	{80000, 1948342},   {82500, 1699564},   {85000, 1456818},   {87500, 1219785},
+	{90000, 988174},    {92500, 761716},    {95000, 540159},    {97500, 323275},
+	{100000, 110848},   {102500, -97321},   {105000, -301420},  {107500, -501621},
+	{110000, -698087},  {112500, -890970},  {115000, -1080413}, {117500, -1266550},
+	{120000, -1449508}, {122500, -1629405}, {125000, -1806354}};
+
+static double _interpolate(double x, double x0, double x1, int32_t y0, int32_t y1)
+{
+	return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+}
+#endif
 
 int reg_read(uint8_t reg, uint8_t *data, uint16_t length, struct bmp581_data *drv)
 {
@@ -389,20 +416,59 @@ static int bmp581_channel_get(const struct device *dev, enum sensor_channel chan
 
 	switch (chan) {
 	case SENSOR_CHAN_ALTITUDE: {
+#if IS_ENABLED(CONFIG_BMP581_ALTITUDE_CALC_MATH)
 		/*
-		 *	val must have P0 (typically pressure at sea level or ground)
-		 *	whitepaper regarding calculation of pressure altitude can be found in:
+		 *	Whitepaper regarding calculation of pressure altitude can be found in:
 		 *	https://www.weather.gov/media/epz/wxcalc/pressureAltitude.pdf
 		 *
-		 *	Following formula calculates the pressure in meters
+		 *	Following formula calculates the altitude in meters from pressure
+		 *      and temperature.
 		 */
 		double last_pressure = sensor_value_to_double(&drv->last_sample.pressure);
-		double altitude =
-			44307.69 * (1.0 - pow(last_pressure / sensor_value_to_double(val), 0.1903));
+		double last_temperature = sensor_value_to_double(&drv->last_sample.temperature);
+		double sealevel_pressure = 101325.0;
+		double deg_c_to_kelvin = 273.15;
+		double altitude = ((deg_c_to_kelvin + last_temperature) / 0.0065) *
+				  (1.0 - pow(last_pressure / sealevel_pressure, 0.1903));
 
 		sensor_value_from_double(val, altitude);
 
 		return BMP5_OK;
+#elif IS_ENABLED(CONFIG_BMP581_ALTITUDE_CALC_LUT)
+		double last_pressure = sensor_value_to_double(&drv->last_sample.pressure);
+
+		/* Check that the pressure is within the range defined in the LUT  */
+		if (!IN_RANGE(last_pressure, altitude_lut[0].pressure,
+			      altitude_lut[ARRAY_SIZE(altitude_lut) - 1].pressure)) {
+			/* No matching range found */
+			LOG_WRN("Pressure out of range: %f", last_pressure);
+			return -EINVAL;
+		}
+
+		/* Find the correct altitude range in the look-up table */
+		size_t idx = 0;
+
+		for (size_t i = 0; i < ARRAY_SIZE(altitude_lut) - 1; i++) {
+			if (last_pressure < altitude_lut[i + 1].pressure) {
+				idx = i;
+				break;
+			}
+		}
+
+		/* Get the interpolated measurement multiplier */
+		double altitude = _interpolate(
+			last_pressure, altitude_lut[idx].pressure, altitude_lut[idx + 1].pressure,
+			altitude_lut[idx].altitude, altitude_lut[idx + 1].altitude);
+
+		/* convert altitude from mm to m */
+		altitude /= 1000;
+
+		sensor_value_from_double(val, altitude);
+
+		return BMP5_OK;
+#else /* CONFIG_BMP581_ALTITUDE_CALC_OFF */
+		return -ENOTSUP;
+#endif
 	}
 	case SENSOR_CHAN_PRESS:
 		/* returns pressure in Pa */
