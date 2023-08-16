@@ -552,12 +552,6 @@ test_i2c_bmp388: bmp388@55 {
 	int-gpios = <&test_gpio 0 0>;
 };
 
-test_i2c_bmp581: bmp581@46 {
-	compatible = "bosch,bmp581";
-	reg = <0x46>;
-	int-gpios = <&test_gpio 0 0>;
-};
-
 test_i2c_lm75: lm75@56 {
 	compatible = "lm75";
 	reg = <0x56>;
@@ -749,4 +743,10 @@ test_i2c_ist8310@6f {
 	compatible = "isentek,ist8310";
 	reg = <0x6f>;
 	status = "okay";
+};
+
+test_i2c_bmp581: bmp581@70 {
+	compatible = "bosch,bmp581";
+	reg = <0x70>;
+	int-gpios = <&test_gpio 0 0>;
 };
