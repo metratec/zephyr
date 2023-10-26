@@ -16,7 +16,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/http/service.h>
 #include <zephyr/net/tls_credentials.h>
-LOG_MODULE_REGISTER(net_http_server, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(net_http_server, CONFIG_NET_HTTP_SERVER_LOG_LEVEL);
 
 #define HTTP_SERVER_MAX_RESPONSE_SIZE CONFIG_NET_HTTP_SERVER_MAX_RESPONSE_SIZE
 #define HTTP_SERVER_MAX_URL_LENGTH    CONFIG_NET_HTTP_SERVER_MAX_URL_LENGTH
