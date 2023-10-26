@@ -22,28 +22,10 @@ LOG_MODULE_REGISTER(net_http_server, CONFIG_NET_HTTP_SERVER_LOG_LEVEL);
 #define HTTP_SERVER_MAX_URL_LENGTH    CONFIG_NET_HTTP_SERVER_MAX_URL_LENGTH
 #define HTTP_SERVER_MAX_FRAME_SIZE    CONFIG_NET_HTTP_SERVER_MAX_FRAME_SIZE
 
-#if !defined(__ZEPHYR__) || defined(CONFIG_POSIX_API)
-
-#define INCLUDE_HTML_CONTENT 1
-
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/eventfd.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <zephyr/sys/byteorder.h>
-
-#else
-
 #include <zephyr/kernel.h>
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/posix/sys/eventfd.h>
-
-#endif
 
 static char url_buffer[CONFIG_NET_HTTP_SERVER_MAX_URL_LENGTH];
 static char http_response[CONFIG_NET_HTTP_SERVER_MAX_RESPONSE_SIZE];
