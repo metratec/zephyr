@@ -83,7 +83,7 @@ int http_server_init(struct http_server_ctx *ctx)
 
 		/* Set up the server address struct according to address family */
 		if (IS_ENABLED(CONFIG_NET_IPV6) &&
-		    inet_pton(AF_INET6, svc->host, &_addr.addr6->sin6_addr) == 1) {
+		    zsock_inet_pton(AF_INET6, svc->host, &_addr.addr6->sin6_addr) == 1) {
 			/* if a literal IPv6 address is provided as the host, use IPv6 */
 			af = AF_INET6;
 			len = sizeof(*_addr.addr6);
@@ -91,7 +91,7 @@ int http_server_init(struct http_server_ctx *ctx)
 			_addr.addr6->sin6_family = AF_INET6;
 			_addr.addr6->sin6_port = *svc->port;
 		} else if (IS_ENABLED(CONFIG_NET_IPV4) &&
-			   inet_pton(AF_INET, svc->host, &_addr.addr4->sin_addr) == 1) {
+			   zsock_inet_pton(AF_INET, svc->host, &_addr.addr4->sin_addr) == 1) {
 			/* if a literal IPv4 address is provided as the host, use IPv4 */
 			af = AF_INET;
 			len = sizeof(*_addr.addr4);
@@ -116,12 +116,12 @@ int http_server_init(struct http_server_ctx *ctx)
 			break;
 		}
 		/* Create a socket */
-		ctx->server_fd = socket(af, SOCK_STREAM, proto);
+		ctx->server_fd = zsock_socket(af, SOCK_STREAM, proto);
 		if (ctx->server_fd < 0) {
 			LOG_ERR("socket: %d", errno);
 			break;
 		}
-		if (setsockopt(ctx->server_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) <
+		if (zsock_setsockopt(ctx->server_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) <
 		    0) {
 			LOG_ERR("setsockopt: %d", errno);
 			break;
@@ -138,13 +138,13 @@ int http_server_init(struct http_server_ctx *ctx)
 		sec_tag_list = server_tag_list_verify_none;
 		sec_tag_list_size = sizeof(server_tag_list_verify_none);
 
-		if (setsockopt(ctx->server_fd, SOL_TLS, TLS_SEC_TAG_LIST, sec_tag_list,
+		if (zsock_setsockopt(ctx->server_fd, SOL_TLS, TLS_SEC_TAG_LIST, sec_tag_list,
 			       sec_tag_list_size) < 0) {
 			LOG_ERR("setsockopt");
 			return -errno;
 		}
 
-		if (setsockopt(ctx->server_fd, SOL_TLS, TLS_HOSTNAME, "localhost",
+		if (zsock_setsockopt(ctx->server_fd, SOL_TLS, TLS_HOSTNAME, "localhost",
 			       sizeof("localhost")) < 0) {
 			LOG_ERR("setsockopt");
 			return -errno;
@@ -152,21 +152,21 @@ int http_server_init(struct http_server_ctx *ctx)
 #endif
 
 		/* Bind to the specified address */
-		if (bind(ctx->server_fd, _addr.addr, len) < 0) {
+		if (zsock_bind(ctx->server_fd, _addr.addr, len) < 0) {
 			LOG_ERR("bind: %d", errno);
 			break;
 		}
 		if (*svc->port == 0) {
 			/* ephemeral port - read back the port number */
 			len = sizeof(addr_storage);
-			if (getsockname(ctx->server_fd, _addr.addr, &len) < 0) {
+			if (zsock_getsockname(ctx->server_fd, _addr.addr, &len) < 0) {
 				LOG_ERR("getsockname: %d", errno);
 				break;
 			}
 			*svc->port = htons(_addr.addr4->sin_port);
 		}
 		/* Listen for connections */
-		if (listen(ctx->server_fd, MAX_CLIENTS) < 0) {
+		if (zsock_listen(ctx->server_fd, MAX_CLIENTS) < 0) {
 			LOG_ERR("listen: %d", errno);
 			break;
 		}
@@ -209,7 +209,7 @@ int accept_new_client(int server_fd)
 	memset(&sa, 0, sizeof(sa));
 	addrlen = sizeof(sa);
 
-	new_socket = accept(server_fd, (struct sockaddr *)&sa, &addrlen);
+	new_socket = zsock_accept(server_fd, (struct sockaddr *)&sa, &addrlen);
 
 	if (new_socket < 0) {
 		LOG_ERR("accept failed");
@@ -224,7 +224,7 @@ int http_server_start(struct http_server_ctx *ctx)
 	eventfd_t value = 0;
 
 	do {
-		int ret = poll(ctx->fds, ctx->num_clients + 2, 0);
+		int ret = zsock_poll(ctx->fds, ctx->num_clients + 2, -1);
 
 		if (ret < 0) {
 			LOG_ERR("poll failed");
@@ -281,12 +281,12 @@ int http_server_start(struct http_server_ctx *ctx)
 				if (!found_slot) {
 					LOG_INF("No free slot found.");
 
-					close(new_socket);
+					zsock_close(new_socket);
 				}
 				continue;
 			}
 
-			int valread = recv(client->client_fd, client->buffer + client->offset,
+			int valread = zsock_recv(client->client_fd, client->buffer + client->offset,
 					   sizeof(client->buffer) - client->offset, 0);
 
 			if (valread <= 0) {
@@ -316,7 +316,7 @@ int http_server_stop(struct http_server_ctx *ctx)
 
 void close_client_connection(struct http_server_ctx *ctx_server, int client_index)
 {
-	close(ctx_server->fds[client_index].fd);
+	zsock_close(ctx_server->fds[client_index].fd);
 	ctx_server->fds[client_index].fd = INVALID_SOCK;
 	ctx_server->fds[client_index].events = 0;
 	ctx_server->fds[client_index].revents = 0;
@@ -952,7 +952,7 @@ int on_url(struct http_parser *p, const char *at, size_t length)
 ssize_t sendall(int sock, const void *buf, size_t len)
 {
 	while (len) {
-		size_t out_len = send(sock, buf, len, 0);
+		size_t out_len = zsock_send(sock, buf, len, 0);
 
 		if (out_len < 0) {
 			return out_len;
