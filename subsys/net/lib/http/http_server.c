@@ -72,9 +72,9 @@ int http_server_init(struct http_server_ctx *ctx)
 	} _addr = {.addr = (struct sockaddr *)&addr_storage};
 	int proto = IPPROTO_TCP;
 
-#if defined(CONFIG_NET_SOCKETS_SOCKOPT_TLS)
-	proto = IPPROTO_TLS_1_2;
-#endif
+	if (IS_ENABLED(CONFIG_NET_SOCKETS_SOCKOPT_TLS)) {
+		proto = IPPROTO_TLS_1_2;
+	}
 
 	HTTP_SERVICE_FOREACH(svc)
 	{
@@ -127,29 +127,29 @@ int http_server_init(struct http_server_ctx *ctx)
 			break;
 		}
 
-#if defined(CONFIG_TLS_CREDENTIALS) || defined(CONFIG_NET_SOCKETS_SOCKOPT_TLS)
-		static const sec_tag_t server_tag_list_verify_none[] = {
-			HTTP_SERVER_SERVER_CERTIFICATE_TAG,
-		};
+		if (IS_ENABLED(CONFIG_TLS_CREDENTIALS) || IS_ENABLED(CONFIG_NET_SOCKETS_SOCKOPT_TLS)) {
+			static const sec_tag_t server_tag_list_verify_none[] = {
+				HTTP_SERVER_SERVER_CERTIFICATE_TAG,
+			};
 
-		const sec_tag_t *sec_tag_list;
-		size_t sec_tag_list_size;
+			const sec_tag_t *sec_tag_list;
+			size_t sec_tag_list_size;
 
-		sec_tag_list = server_tag_list_verify_none;
-		sec_tag_list_size = sizeof(server_tag_list_verify_none);
+			sec_tag_list = server_tag_list_verify_none;
+			sec_tag_list_size = sizeof(server_tag_list_verify_none);
 
-		if (zsock_setsockopt(ctx->server_fd, SOL_TLS, TLS_SEC_TAG_LIST, sec_tag_list,
-			       sec_tag_list_size) < 0) {
-			LOG_ERR("setsockopt");
-			return -errno;
+			if (zsock_setsockopt(ctx->server_fd, SOL_TLS, TLS_SEC_TAG_LIST, sec_tag_list,
+					     sec_tag_list_size) < 0) {
+				LOG_ERR("setsockopt");
+				return -errno;
+			}
+
+			if (zsock_setsockopt(ctx->server_fd, SOL_TLS, TLS_HOSTNAME, "localhost",
+					     sizeof("localhost")) < 0) {
+				LOG_ERR("setsockopt");
+				return -errno;
+			}
 		}
-
-		if (zsock_setsockopt(ctx->server_fd, SOL_TLS, TLS_HOSTNAME, "localhost",
-			       sizeof("localhost")) < 0) {
-			LOG_ERR("setsockopt");
-			return -errno;
-		}
-#endif
 
 		/* Bind to the specified address */
 		if (zsock_bind(ctx->server_fd, _addr.addr, len) < 0) {
