@@ -47,7 +47,7 @@ static const char index_html_gz[] = "Hello, World!";
 struct http_resource_detail_static index_html_gz_resource_detail = {
 	.common = {
 			.type = HTTP_RESOURCE_TYPE_STATIC,
-			.bitmask_of_supported_http_methods = GET,
+			.bitmask_of_supported_http_methods = BIT(HTTP_GET),
 		},
 	.static_data = index_html_gz,
 	.static_data_len = sizeof(index_html_gz),

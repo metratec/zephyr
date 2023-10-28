@@ -48,7 +48,7 @@ HTTP_SERVICE_DEFINE(test_http_service, CONFIG_NET_CONFIG_MY_IPV4_ADDR, &test_htt
 struct http_resource_detail_static index_html_gz_resource_detail = {
 	.common = {
 			.type = HTTP_RESOURCE_TYPE_STATIC,
-			.bitmask_of_supported_http_methods = GET,
+			.bitmask_of_supported_http_methods = BIT(HTTP_GET),
 		},
 	.static_data = index_html_gz,
 	.static_data_len = sizeof(index_html_gz),

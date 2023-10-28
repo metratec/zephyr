@@ -576,7 +576,7 @@ int handle_http1_static_resource(struct http_resource_detail_static *static_deta
 	int len;
 	int ret;
 
-	if (static_detail->common.bitmask_of_supported_http_methods & GET) {
+	if (static_detail->common.bitmask_of_supported_http_methods & BIT(HTTP_GET)) {
 		data = static_detail->static_data;
 		len = static_detail->static_data_len;
 
@@ -604,8 +604,7 @@ int handle_http1_static_resource(struct http_resource_detail_static *static_deta
 int handle_http1_rest_resource(struct http_resource_detail_static *static_detail,
 			       struct http_client_ctx *ctx_client)
 {
-
-	if (static_detail->common.bitmask_of_supported_http_methods & POST) {
+	if (static_detail->common.bitmask_of_supported_http_methods & BIT(HTTP_POST)) {
 		char *json_start = strstr(ctx_client->buffer, "\r\n\r\n");
 
 		if (json_start) {
@@ -699,7 +698,7 @@ int handle_http_done(struct http_server_ctx *ctx_server, struct http_client_ctx 
 int handle_http2_static_resource(struct http_resource_detail_static *static_detail,
 				 struct http_frame *frame, int client_fd)
 {
-	if (static_detail->common.bitmask_of_supported_http_methods & GET) {
+	if (static_detail->common.bitmask_of_supported_http_methods & BIT(HTTP_GET)) {
 		const char *content_200 = static_detail->static_data;
 		size_t content_size = static_detail->static_data_len;
 

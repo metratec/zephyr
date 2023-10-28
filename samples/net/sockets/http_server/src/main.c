@@ -22,7 +22,7 @@ static uint8_t index_html_gz[] = {
 struct http_resource_detail_static index_html_gz_resource_detail = {
 	.common = {
 			.type = HTTP_RESOURCE_TYPE_STATIC,
-			.bitmask_of_supported_http_methods = GET,
+			.bitmask_of_supported_http_methods = BIT(HTTP_GET),
 		},
 	.static_data = index_html_gz,
 	.static_data_len = sizeof(index_html_gz),
@@ -34,7 +34,7 @@ HTTP_RESOURCE_DEFINE(index_html_gz_resource, test_http_service, "/",
 struct http_resource_detail_rest add_two_numbers_detail = {
 	.common = {
 			.type = HTTP_RESOURCE_TYPE_REST,
-			.bitmask_of_supported_http_methods = POST,
+			.bitmask_of_supported_http_methods = BIT(HTTP_POST),
 		},
 };
 

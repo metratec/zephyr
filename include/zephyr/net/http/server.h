@@ -24,21 +24,18 @@
 #define MAX_CLIENTS                CONFIG_NET_HTTP_SERVER_MAX_CLIENTS
 #define MAX_STREAMS                CONFIG_NET_HTTP_SERVER_MAX_STREAMS
 
-#define GET     0x01
-#define POST    0x02
-#define HEAD    0x03
-#define PUT     0x04
-#define DELETE  0x05
-
 enum http_resource_type {
 	HTTP_RESOURCE_TYPE_STATIC,
 	HTTP_RESOURCE_TYPE_REST
 };
 
 struct http_resource_detail {
-	uintptr_t bitmask_of_supported_http_methods;
+	uint32_t bitmask_of_supported_http_methods;
 	enum http_resource_type type;
 };
+BUILD_ASSERT(NUM_BITS(\
+	     sizeof(((struct http_resource_detail *)0)->bitmask_of_supported_http_methods))
+	     >= (HTTP_METHOD_END_VALUE - 1));
 
 struct http_resource_detail_static {
 	struct http_resource_detail common;

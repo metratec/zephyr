@@ -30,7 +30,7 @@ HTTP_SERVICE_DEFINE(test_http_service, CONFIG_NET_CONFIG_MY_IPV4_ADDR, &test_htt
 struct http_resource_detail_rest add_two_numbers_detail = {
 	.common = {
 			.type = HTTP_RESOURCE_TYPE_REST,
-			.bitmask_of_supported_http_methods = POST,
+			.bitmask_of_supported_http_methods = BIT(HTTP_POST),
 		},
 };
 
