@@ -20,7 +20,10 @@
 
 #endif
 
+#include <zephyr/net/http/parser.h>
+
 #define CLIENT_BUFFER_SIZE         CONFIG_NET_HTTP_SERVER_CLIENT_BUFFER_SIZE
+#define MAX_SERVICES               CONFIG_NUM_HTTP_SERVICES
 #define MAX_CLIENTS                CONFIG_NET_HTTP_SERVER_MAX_CLIENTS
 #define MAX_STREAMS                CONFIG_NET_HTTP_SERVER_MAX_STREAMS
 
@@ -87,19 +90,27 @@ struct http_frame {
 };
 
 struct http_client_ctx {
-	int client_fd;
+	int fd;
 	int offset;
+	bool has_upgrade_header;
 	unsigned char buffer[CLIENT_BUFFER_SIZE];
 	enum http_server_state server_state;
 	struct http_frame current_frame;
 	struct http_stream_ctx streams[MAX_STREAMS];
+	struct http_parser_settings parserSettings;
+	struct http_parser parser;
+	unsigned char url_buffer[CONFIG_NET_HTTP_SERVER_MAX_URL_LENGTH];
 };
 
 struct http_server_ctx {
-	int server_fd;
-	int event_fd;
-	size_t num_clients;
-	struct pollfd fds[MAX_CLIENTS + 2];
+	int num_clients;
+	int listen_fds;   /* max value of 1 + MAX_SERVICES */
+
+	/* First pollfd is eventfd that can be used to stop the server,
+	 * then we have the server listen sockets,
+	 * and then the accepted sockets.
+	 */
+	struct pollfd fds[1 + MAX_SERVICES + MAX_CLIENTS];
 	struct http_client_ctx clients[MAX_CLIENTS];
 };
 
