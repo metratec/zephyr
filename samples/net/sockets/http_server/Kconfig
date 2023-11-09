@@ -1,0 +1,12 @@
+# Config options for http2 server sample application
+
+# Copyright (c) 2023, Emna Rekik
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "HTTP2 server sample application"
+
+config NET_HTTP_SERVER_SERVICE_PORT
+	int "Port number for http service"
+	default 8080
+
+source "Kconfig.zephyr"
