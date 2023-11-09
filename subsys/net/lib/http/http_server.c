@@ -132,7 +132,9 @@ int http_server_init(struct http_server_ctx *ctx)
 		}
 
 		/* Create a socket */
-		if (IS_ENABLED(CONFIG_NET_SOCKETS_SOCKOPT_TLS) && svc->sec_tag_list != NULL) {
+		if (COND_CODE_1(CONFIG_NET_SOCKETS_SOCKOPT_TLS,
+				(svc->sec_tag_list != NULL),
+				(0))) {
 			proto = IPPROTO_TLS_1_2;
 		} else {
 			proto = IPPROTO_TCP;
@@ -145,9 +147,11 @@ int http_server_init(struct http_server_ctx *ctx)
 			continue;
 		}
 
-		if (IS_ENABLED(CONFIG_NET_SOCKETS_SOCKOPT_TLS) && svc->sec_tag_list != NULL) {
+#if defined(CONFIG_NET_SOCKETS_SOCKOPT_TLS)
+		if (svc->sec_tag_list != NULL) {
 			if (zsock_setsockopt(fd, SOL_TLS, TLS_SEC_TAG_LIST,
-					     svc->sec_tag_list, svc->sec_tag_list_size) < 0) {
+					     svc->sec_tag_list,
+					     svc->sec_tag_list_size) < 0) {
 				LOG_ERR("setsockopt: %d", errno);
 				zsock_close(fd);
 				continue;
@@ -160,6 +164,7 @@ int http_server_init(struct http_server_ctx *ctx)
 				continue;
 			}
 		}
+#endif
 
 		if (zsock_setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){1},
 				     sizeof(int)) < 0) {
