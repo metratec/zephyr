@@ -32,6 +32,9 @@ LOG_MODULE_REGISTER(net_http_server, CONFIG_NET_HTTP_SERVER_LOG_LEVEL);
 
 static const char preface[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
+static const char final_chunk[] = "0\r\n\r\n";
+static const char *crlf = &final_chunk[3];
+
 static struct arithmetic_result results[POST_REQUEST_STORAGE_LIMIT];
 static int results_count = 1;
 
@@ -625,11 +628,15 @@ int handle_http_preface(struct http_client_ctx *client)
 	return 0;
 }
 
-struct http_resource_detail *get_resource_detail(const char *path)
+struct http_resource_detail *get_resource_detail(const char *path,
+						 int *path_len)
 {
 	HTTP_SERVICE_FOREACH(service) {
 		HTTP_SERVICE_FOREACH_RESOURCE(service, resource) {
-			if (strcmp(resource->resource, path) == 0) {
+			int len = strlen(resource->resource);
+
+			if (strncmp(path, resource->resource, len) == 0) {
+				*path_len = len;
 				return resource->detail;
 			}
 		}
@@ -673,6 +680,142 @@ int handle_http1_static_resource(struct http_resource_detail_static *static_deta
 	return 0;
 }
 
+#define RESPONSE_TEMPLATE_CHUNKED			\
+	"HTTP/1.1 200 OK\r\n"				\
+	"Content-Type: text/html\r\n"			\
+	"Transfer-Encoding: chunked\r\n\r\n"
+
+#define RESPONSE_TEMPLATE_DYNAMIC			\
+	"HTTP/1.1 200 OK\r\n"				\
+	"Content-Type: text/html\r\n\r\n"		\
+
+static int dynamic_get_req(struct http_resource_detail_dynamic *dynamic_detail,
+			   struct http_client_ctx *client)
+{
+	/* offset tells from where the GET params start */
+	int ret, remaining, offset = dynamic_detail->common.path_len;
+	char *ptr;
+#define TEMP_BUF_LEN 64
+	char tmp[TEMP_BUF_LEN];
+
+	ret = sendall(client->fd, RESPONSE_TEMPLATE_CHUNKED,
+		      sizeof(RESPONSE_TEMPLATE_CHUNKED) - 1);
+	if (ret < 0) {
+		return ret;
+	}
+
+	remaining = strlen(&client->url_buffer[dynamic_detail->common.path_len]);
+
+	/* Pass URL to the client */
+	while (1) {
+		int copy_len, send_len;
+
+		ptr = &client->url_buffer[offset];
+		copy_len = MIN(remaining, dynamic_detail->data_buffer_len);
+
+		memcpy(dynamic_detail->data_buffer, ptr, copy_len);
+
+	again:
+		send_len = dynamic_detail->cb(client, dynamic_detail->data_buffer,
+					      copy_len, dynamic_detail->user_data);
+		if (send_len > 0) {
+			ret = snprintk(tmp, sizeof(tmp), "%x\r\n", send_len);
+			ret = sendall(client->fd, tmp, ret);
+			if (ret < 0) {
+				return ret;
+			}
+
+			ret = sendall(client->fd, dynamic_detail->data_buffer, send_len);
+			if (ret < 0) {
+				return ret;
+			}
+
+			(void)sendall(client->fd, crlf, 2);
+
+			offset += copy_len;
+			remaining -= copy_len;
+
+			/* If we have passed all the data to the application,
+			 * then just pass empty buffer to it.
+			 */
+			if (remaining == 0) {
+				copy_len = 0;
+				goto again;
+			}
+
+			continue;
+		}
+
+		break;
+	}
+
+	ret = sendall(client->fd, final_chunk, sizeof(final_chunk) - 1);
+	if (ret < 0) {
+		return ret;
+	}
+
+	return 0;
+}
+
+int handle_http1_dynamic_resource(struct http_resource_detail_dynamic *dynamic_detail,
+				  struct http_client_ctx *client)
+{
+	uint32_t user_method;
+#define TEMP_BUF_LEN 64
+	char tmp[TEMP_BUF_LEN];
+	int ret;
+
+	if (dynamic_detail->cb == NULL) {
+		return -ESRCH;
+	}
+
+	user_method = dynamic_detail->common.bitmask_of_supported_http_methods;
+
+	if (!(BIT(client->parser.method) & user_method)) {
+		return -ENOPROTOOPT;
+	}
+
+	switch (client->parser.method) {
+	case HTTP_HEAD:
+		if (user_method & BIT(HTTP_HEAD)) {
+			ret = sendall(client->fd, RESPONSE_TEMPLATE_DYNAMIC,
+				      sizeof(RESPONSE_TEMPLATE_DYNAMIC) - 1);
+			if (ret < 0) {
+				return ret;
+			}
+
+			return 0;
+		}
+
+	case HTTP_GET:
+		/* For GET request, we do not pass any data to the app but let the app
+		 * send data to the peer.
+		 */
+		if (user_method & BIT(HTTP_GET)) {
+			return dynamic_get_req(dynamic_detail, client);
+		}
+
+		goto not_supported;
+
+	case HTTP_POST:
+		if (user_method & BIT(HTTP_POST)) {
+			/* TBD */
+		}
+
+		goto not_supported;
+
+	not_supported:
+	default:
+		LOG_DBG("HTTP method %s (%d) not supported.",
+			http_method_str(client->parser.method),
+			client->parser.method);
+
+		return -ENOTSUP;
+	}
+
+	return 0;
+}
+
 int handle_http1_rest_resource(struct http_resource_detail_static *static_detail,
 			       struct http_client_ctx *client)
 {
@@ -690,7 +833,7 @@ int handle_http1_rest_resource(struct http_resource_detail_static *static_detail
 int handle_http1_request(struct http_server_ctx *server, struct http_client_ctx *client)
 {
 	int total_received = 0;
-	int offset = 0, ret;
+	int offset = 0, ret, path_len = 0;
 	struct http_resource_detail *detail;
 
 	LOG_DBG("HTTP_SERVER_REQUEST");
@@ -731,13 +874,23 @@ int handle_http1_request(struct http_server_ctx *server, struct http_client_ctx 
 		return 0;
 	}
 
-	detail = get_resource_detail(client->url_buffer);
+	detail = get_resource_detail(client->url_buffer, &path_len);
 	if (detail != NULL) {
+		detail->path_len = path_len;
+
 		if (detail->type == HTTP_RESOURCE_TYPE_STATIC) {
 			ret = handle_http1_static_resource(
 				(struct http_resource_detail_static *)detail,
 				client->fd);
 			if (ret < 0) {
+				close_client_connection(server, client);
+				return ret;
+			}
+		} else if (detail->type == HTTP_RESOURCE_TYPE_DYNAMIC) {
+			ret = handle_http1_dynamic_resource(
+				(struct http_resource_detail_dynamic *)detail,
+				client);
+			if (ret <= 0) {
 				close_client_connection(server, client);
 				return ret;
 			}
@@ -805,7 +958,7 @@ int handle_http_frame_headers(struct http_client_ctx *client)
 	int bytes_consumed;
 	const char *method;
 	const char *path;
-	int ret;
+	int ret, path_len;
 
 	LOG_DBG("HTTP_SERVER_FRAME_HEADERS");
 
@@ -823,8 +976,10 @@ int handle_http_frame_headers(struct http_client_ctx *client)
 		path = http_hpack_parse_header(client, HTTP_SERVER_HPACK_PATH);
 	}
 
-	detail = get_resource_detail(path);
+	detail = get_resource_detail(path, &path_len);
 	if (detail != NULL) {
+		detail->path_len = path_len;
+
 		if (detail->type == HTTP_RESOURCE_TYPE_STATIC) {
 			ret = handle_http2_static_resource(
 				(struct http_resource_detail_static *)detail, frame,

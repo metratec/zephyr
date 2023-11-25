@@ -15,7 +15,7 @@
 #include <zephyr/net/http/hpack.h>
 #include <zephyr/net/http/frame.h>
 
-struct http_resource_detail *get_resource_detail(const char *path);
+struct http_resource_detail *get_resource_detail(const char *path, int *);
 int handle_http1_static_resource(struct http_resource_detail_static *static_detail, int client_fd);
 int handle_http1_rest_resource(struct http_resource_detail_static *static_detail,
 			       struct http_client_ctx *ctx_client);

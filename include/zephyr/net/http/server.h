@@ -29,12 +29,14 @@
 
 enum http_resource_type {
 	HTTP_RESOURCE_TYPE_STATIC,
+	HTTP_RESOURCE_TYPE_DYNAMIC,
 	HTTP_RESOURCE_TYPE_REST
 };
 
 struct http_resource_detail {
 	uint32_t bitmask_of_supported_http_methods;
 	enum http_resource_type type;
+	int path_len; /* length of the URL path */
 };
 BUILD_ASSERT(NUM_BITS(\
 	     sizeof(((struct http_resource_detail *)0)->bitmask_of_supported_http_methods))
@@ -44,6 +46,36 @@ struct http_resource_detail_static {
 	struct http_resource_detail common;
 	const void *static_data;
 	size_t static_data_len;
+};
+
+struct http_client_ctx;
+
+/**
+ * @typedef http_resource_dynamic_cb_t
+ * @brief Callback used when data is received. Data to be sent to client
+ *        can be specified.
+ *
+ * @param client HTTP context information for this client connection.
+ * @param data_buffer Data received.
+ * @param data_len Amount of data received.
+ * @param user_data User specified data.
+ *
+ * @return >0 amount of data to be sent to client, let server to call this
+ *            function again when new data is received.
+ *          0 nothing to sent to client, close the connection
+ *         <0 error, close the connection.
+ */
+typedef int (*http_resource_dynamic_cb_t)(struct http_client_ctx *client,
+					  uint8_t *data_buffer,
+					  size_t data_len,
+					  void *user_data);
+
+struct http_resource_detail_dynamic {
+	struct http_resource_detail common;
+	http_resource_dynamic_cb_t cb;
+	uint8_t *data_buffer;
+	size_t data_buffer_len;
+	void *user_data;
 };
 
 struct http_resource_detail_rest {
