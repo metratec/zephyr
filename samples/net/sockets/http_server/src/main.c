@@ -37,6 +37,61 @@ struct http_resource_detail_static index_html_gz_resource_detail = {
 HTTP_RESOURCE_DEFINE(index_html_gz_resource, test_http_service, "/",
 		     &index_html_gz_resource_detail);
 
+static uint8_t recv_buffer[1024];
+
+static int dyn1_handler(struct http_client_ctx *client,
+			uint8_t *buffer, size_t len, void *user_data)
+{
+#define MAX_TEMP_PRINT_LEN 32
+	static char print_str[MAX_TEMP_PRINT_LEN];
+	static int counter;
+	enum http_method method = client->parser.method;
+
+	int ret;
+
+	__ASSERT_NO_MSG(buffer != NULL);
+
+	if (len == 0) {
+		LOG_DBG("All data received.");
+	} else {
+		snprintf(print_str, sizeof(print_str), "%s received (%d bytes)", http_method_str(method), len);
+		LOG_HEXDUMP_DBG(buffer, len, print_str);
+	}
+
+	switch (counter) {
+	case 0:
+		counter++;
+		ret = snprintk(recv_buffer, sizeof(recv_buffer), "Sending some");
+		return ret;
+
+	case 1:
+		counter++;
+		ret = snprintk(recv_buffer, sizeof(recv_buffer), "buffer data");
+		return ret;
+
+	case 2:
+		counter = 0;
+		break;
+	}
+
+	return 0;
+}
+
+struct http_resource_detail_dynamic dyn1_resource_detail = {
+	.common = {
+		.type = HTTP_RESOURCE_TYPE_DYNAMIC,
+		.bitmask_of_supported_http_methods =
+				BIT(HTTP_GET) | BIT(HTTP_POST),
+	},
+	.cb = dyn1_handler,
+	.data_buffer = recv_buffer,
+	.data_buffer_len = sizeof(recv_buffer),
+	.user_data = NULL,
+};
+
+HTTP_RESOURCE_DEFINE(dyn1_resource, test_http_service, "/dynamic",
+		     &dyn1_resource_detail);
+
 struct http_resource_detail_rest add_two_numbers_detail = {
 	.common = {
 			.type = HTTP_RESOURCE_TYPE_REST,
