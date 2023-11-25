@@ -186,17 +186,20 @@ static void setup_tls(void)
 int main(void)
 {
 	struct http_server_ctx ctx;
-	int server_fd;
+	int ret;
 
 	setup_tls();
 
-	server_fd = http_server_init(&ctx);
-	if (server_fd < 0) {
-		printf("Failed to initialize HTTP2 server\n");
-		return server_fd;
-	}
+	while (1) {
+		ret = http_server_init(&ctx);
+		if (ret < 0) {
+			LOG_ERR("Failed to initialize HTTP2 server");
+			return ret;
+		}
 
-	http_server_start(&ctx);
+		ret = http_server_start(&ctx);
+		LOG_INF("Re-starting server (%d)", ret);
+	}
 
 	return 0;
 }
