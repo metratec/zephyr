@@ -17,14 +17,14 @@ LOG_MODULE_REGISTER(net_hostname, CONFIG_NET_HOSTNAME_LOG_LEVEL);
 #include <zephyr/net/net_core.h>
 #include <zephyr/net/net_mgmt.h>
 
-static char hostname[NET_HOSTNAME_SIZE];
+static char _hostname[NET_HOSTNAME_SIZE];
 
 static void trigger_net_event(void)
 {
 	if (IS_ENABLED(CONFIG_NET_MGMT_EVENT_INFO)) {
 		struct net_event_l4_hostname info;
 
-		memcpy(info.hostname, hostname, sizeof(hostname));
+		memcpy(info.hostname, _hostname, sizeof(_hostname));
 		net_mgmt_event_notify_with_info(NET_EVENT_HOSTNAME_CHANGED, NULL,
 						&info, sizeof(info));
 	} else {
@@ -34,8 +34,25 @@ static void trigger_net_event(void)
 
 const char *net_hostname_get(void)
 {
-	return hostname;
+	return _hostname;
 }
+
+#if defined(CONFIG_NET_HOSTNAME_DYNAMIC)
+int net_hostname_set(char *hostname, size_t len)
+{
+	if (len > NET_HOSTNAME_MAX_LEN) {
+		return -ENOMEM;
+	}
+
+	memcpy(_hostname, hostname, len);
+	_hostname[len] = 0;
+
+	NET_DBG("New hostname %s", _hostname);
+	trigger_net_event();
+
+	return 0;
+}
+#endif
 
 #if defined(CONFIG_NET_HOSTNAME_UNIQUE)
 int net_hostname_set_postfix(const uint8_t *hostname_postfix,
@@ -62,11 +79,11 @@ int net_hostname_set_postfix(const uint8_t *hostname_postfix,
 	}
 
 	for (i = 0; i < postfix_len; i++, pos += 2) {
-		snprintk(&hostname[sizeof(CONFIG_NET_HOSTNAME) - 1 + pos],
-			 2 + 1, "%02x", hostname_postfix[i]);
+		snprintk(&_hostname[sizeof(CONFIG_NET_HOSTNAME) - 1 + pos], 2 + 1, "%02x",
+			 hostname_postfix[i]);
 	}
 
-	NET_DBG("New hostname %s", hostname);
+	NET_DBG("New hostname %s", _hostname);
 
 #if !defined(CONFIG_NET_HOSTNAME_UNIQUE_UPDATE)
 	postfix_set = true;
@@ -79,7 +96,7 @@ int net_hostname_set_postfix(const uint8_t *hostname_postfix,
 
 void net_hostname_init(void)
 {
-	memcpy(hostname, CONFIG_NET_HOSTNAME, sizeof(CONFIG_NET_HOSTNAME) - 1);
+	memcpy(_hostname, CONFIG_NET_HOSTNAME, sizeof(CONFIG_NET_HOSTNAME) - 1);
 
 	NET_DBG("Hostname set to %s", CONFIG_NET_HOSTNAME);
 	trigger_net_event();
