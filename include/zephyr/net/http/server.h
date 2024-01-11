@@ -30,7 +30,8 @@
 enum http_resource_type {
 	HTTP_RESOURCE_TYPE_STATIC,
 	HTTP_RESOURCE_TYPE_DYNAMIC,
-	HTTP_RESOURCE_TYPE_REST
+	HTTP_RESOURCE_TYPE_REST,
+	HTTP_RESOURCE_TYPE_REST_JSON
 };
 
 struct http_resource_detail {
@@ -80,6 +81,17 @@ struct http_resource_detail_dynamic {
 
 struct http_resource_detail_rest {
 	struct http_resource_detail common;
+};
+
+struct http_resource_detail_rest_json {
+	struct http_resource_detail common;
+	http_resource_dynamic_cb_t cb;
+	uint8_t *data_buffer;
+	size_t data_buffer_len;
+	const struct json_obj_descr *descr;
+	size_t descr_len;
+	void *json;
+	void *user_data;
 };
 
 enum http_stream_state {

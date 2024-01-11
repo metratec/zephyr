@@ -830,6 +830,88 @@ int handle_http1_rest_resource(struct http_resource_detail_static *static_detail
 	return 0;
 }
 
+int handle_http1_rest_json_resource(struct http_resource_detail_static *static_detail,
+				    struct http_client_ctx *client)
+{
+	struct http_resource_detail_rest_json *rest_json_detail =
+		CONTAINER_OF(&static_detail->common, struct http_resource_detail_rest_json, common);
+
+	int ret, remaining, offset = rest_json_detail->common.path_len;
+	char *ptr;
+	char tmp[64];
+
+	if (!(static_detail->common.bitmask_of_supported_http_methods & BIT(HTTP_POST))) {
+		return -ENOTSUP;
+	}
+
+	char *json_start = strstr(client->buffer, "\r\n\r\n");
+
+	if (!json_start) {
+		return -EINVAL;
+	}
+
+	ret = json_obj_parse(json_start, strlen(json_start), rest_json_detail->descr,
+			     rest_json_detail->descr_len, rest_json_detail->json);
+	if (ret < 0) {
+		return -1;
+	}
+
+	ret = sendall(client->fd, RESPONSE_TEMPLATE_CHUNKED, sizeof(RESPONSE_TEMPLATE_CHUNKED) - 1);
+	if (ret < 0) {
+		return ret;
+	}
+
+	remaining = strlen(&client->url_buffer[rest_json_detail->common.path_len]);
+
+	/* Pass URL to the client */
+	while (1) {
+		int copy_len, send_len;
+
+		ptr = &client->url_buffer[offset];
+		copy_len = MIN(remaining, rest_json_detail->data_buffer_len);
+
+		memcpy(rest_json_detail->data_buffer, ptr, copy_len);
+
+	again:
+
+		send_len = rest_json_detail->cb(client, rest_json_detail->data_buffer, copy_len,
+						rest_json_detail->user_data);
+		if (send_len > 0) {
+			ret = snprintk(tmp, sizeof(tmp), "%x\r\n", send_len);
+			ret = sendall(client->fd, tmp, ret);
+			if (ret < 0) {
+				return ret;
+			}
+
+			ret = sendall(client->fd, rest_json_detail->data_buffer, send_len);
+			if (ret < 0) {
+				return ret;
+			}
+
+			(void)sendall(client->fd, crlf, 2);
+
+			offset += copy_len;
+			remaining -= copy_len;
+
+			/* If we have passed all the data to the application,
+			 * then just pass empty buffer to it.
+			 */
+			if (remaining == 0) {
+				copy_len = 0;
+				goto again;
+			}
+
+			continue;
+		}
+
+		break;
+	}
+
+	sendall(client->fd, final_chunk, sizeof(final_chunk) - 1);
+
+	return 0;
+}
+
 int handle_http1_request(struct http_server_ctx *server, struct http_client_ctx *client)
 {
 	int total_received = 0;
@@ -897,6 +979,9 @@ int handle_http1_request(struct http_server_ctx *server, struct http_client_ctx 
 		} else if (detail->type == HTTP_RESOURCE_TYPE_REST) {
 			handle_http1_rest_resource((struct http_resource_detail_static *)detail,
 						   client);
+		} else if (detail->type == HTTP_RESOURCE_TYPE_REST_JSON) {
+			handle_http1_rest_json_resource(
+				(struct http_resource_detail_static *)detail, client);
 		}
 	} else {
 		static const char not_found_response[] =
