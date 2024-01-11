@@ -45,6 +45,19 @@ NET_PKT_DATA_POOL_DEFINE(syslog_tx_bufs,
 				  CONFIG_NET_BUF_DATA_SIZE, 1) *
 			 CONFIG_LOG_BACKEND_NET_MAX_BUF);
 
+#ifdef CONFIG_NET_MGMT_EVENT
+static struct net_mgmt_event_callback hostname_cb;
+
+static void hostname_changed(struct net_mgmt_event_callback *cb, uint32_t mgmt_event,
+			     struct net_if *iface)
+{
+	if (mgmt_event == NET_EVENT_HOSTNAME_CHANGED) {
+		(void)strncpy(dev_hostname, net_hostname_get(), MAX_HOSTNAME_LEN);
+		log_output_hostname_set(&log_output_net, dev_hostname);
+	}
+}
+#endif
+
 static struct k_mem_slab *get_tx_slab(void)
 {
 	return &syslog_tx_pkts;
@@ -113,7 +126,11 @@ static int do_net_init(void)
 
 	if (IS_ENABLED(CONFIG_NET_HOSTNAME_ENABLE)) {
 		(void)strncpy(dev_hostname, net_hostname_get(), MAX_HOSTNAME_LEN);
-
+#ifdef CONFIG_NET_MGMT_EVENT
+		net_mgmt_init_event_callback(&hostname_cb, hostname_changed,
+					     NET_EVENT_HOSTNAME_CHANGED);
+		net_mgmt_add_event_callback(&hostname_cb);
+#endif
 	} else if (IS_ENABLED(CONFIG_NET_IPV6) &&
 		   server_addr.sa_family == AF_INET6) {
 		const struct in6_addr *src;
