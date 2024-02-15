@@ -17,6 +17,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/http/service.h>
 #include <zephyr/net/tls_credentials.h>
+#include <zephyr/fs/fs.h>
 LOG_MODULE_REGISTER(net_http_server, CONFIG_NET_HTTP_SERVER_LOG_LEVEL);
 
 #define HTTP_SERVER_MAX_RESPONSE_SIZE CONFIG_NET_HTTP_SERVER_MAX_RESPONSE_SIZE
@@ -57,6 +58,22 @@ static const char content_404[] = {
 };
 
 #define INVALID_SOCK -1
+#define TEMP_BUF_LEN 64
+
+#define RESPONSE_TEMPLATE                                                                          \
+	"HTTP/1.1 200 OK\r\n"                                                                      \
+	"Content-Type: text/html\r\n"                                                              \
+	"Content-Encoding: gzip\r\n"                                                               \
+	"Content-Length: %d\r\n\r\n"
+
+#define RESPONSE_TEMPLATE_CHUNKED                                                                  \
+	"HTTP/1.1 200 OK\r\n"                                                                      \
+	"Content-Type: text/html\r\n"                                                              \
+	"Transfer-Encoding: chunked\r\n\r\n"
+
+#define RESPONSE_TEMPLATE_DYNAMIC                                                                  \
+	"HTTP/1.1 200 OK\r\n"                                                                      \
+	"Content-Type: text/html\r\n\r\n"
 
 int http_server_init(struct http_server_ctx *ctx)
 {
@@ -648,12 +665,6 @@ struct http_resource_detail *get_resource_detail(const char *path,
 int handle_http1_static_resource(struct http_resource_detail_static *static_detail,
 				 int client_fd)
 {
-#define RESPONSE_TEMPLATE			\
-	"HTTP/1.1 200 OK\r\n"			\
-	"Content-Type: text/html\r\n"		\
-	"Content-Encoding: gzip\r\n"		\
-	"Content-Length: %d\r\n\r\n"
-
 	/* Add couple of bytes to total response */
 	char http_response[sizeof(RESPONSE_TEMPLATE) + sizeof("xxxx")];
 	const char *data;
@@ -680,14 +691,79 @@ int handle_http1_static_resource(struct http_resource_detail_static *static_deta
 	return 0;
 }
 
-#define RESPONSE_TEMPLATE_CHUNKED			\
-	"HTTP/1.1 200 OK\r\n"				\
-	"Content-Type: text/html\r\n"			\
-	"Transfer-Encoding: chunked\r\n\r\n"
+#if defined(CONFIG_FILE_SYSTEM)
+int handle_http1_static_fs_resource(struct http_resource_detail_static_fs *static_fs_detail,
+				    struct http_client_ctx *client)
+{
+	/* Add couple of bytes to response template size to have space for the resonse length */
+	char http_response[sizeof(RESPONSE_TEMPLATE) + sizeof("xxxx")];
+	char tmp[TEMP_BUF_LEN];
 
-#define RESPONSE_TEMPLATE_DYNAMIC			\
-	"HTTP/1.1 200 OK\r\n"				\
-	"Content-Type: text/html\r\n\r\n"		\
+	int ret = 0, len;
+	int offset = static_fs_detail->common.path_len;
+
+	struct fs_file_t file;
+	struct fs_dirent dirent;
+	char fname[128];
+	int remaining;
+
+	if (static_fs_detail->common.bitmask_of_supported_http_methods & BIT(HTTP_GET)) {
+		/* get filename from url */
+		if (client->url_buffer[offset]) {
+			snprintk(fname, sizeof(fname), "%s/%s.gz", static_fs_detail->path,
+				 &client->url_buffer[offset]);
+		} else {
+			snprintk(fname, sizeof(fname), "%s/index.html.gz", static_fs_detail->path);
+		}
+
+		/* open file, if it exists */
+		fs_file_t_init(&file);
+		ret = fs_stat(fname, &dirent);
+		if (ret < 0) {
+			LOG_ERR("fs_stat %s: %d", fname, ret);
+			static const char not_found_response[] = "HTTP/1.1 404 Not Found\r\n"
+								 "Content-Length: 9\r\n\r\n"
+								 "Not Found";
+
+			ret = sendall(client->fd, not_found_response,
+				      sizeof(not_found_response) - 1);
+			if (ret < 0) {
+				LOG_DBG("Cannot write to socket (%d)", ret);
+			}
+			return ret;
+		}
+		ret = fs_open(&file, fname, FS_O_READ);
+		if (ret < 0) {
+			LOG_ERR("fs_open %s: %d", fname, ret);
+			return ret;
+		}
+
+		/* send HTTP header */
+		snprintk(http_response, sizeof(http_response), RESPONSE_TEMPLATE, dirent.size);
+		ret = sendall(client->fd, http_response, strlen(http_response));
+		if (ret < 0) {
+			goto close;
+		}
+
+		/* read and send file */
+		remaining = dirent.size;
+		while (remaining > 0) {
+			len = fs_read(&file, tmp, sizeof(tmp));
+			ret = sendall(client->fd, tmp, len);
+			if (ret < 0) {
+				goto close;
+			}
+			remaining -= len;
+		}
+
+	close:
+		/* close file */
+		fs_close(&file);
+	}
+
+	return ret;
+}
+#endif
 
 static int dynamic_get_req(struct http_resource_detail_dynamic *dynamic_detail,
 			   struct http_client_ctx *client)
@@ -695,7 +771,6 @@ static int dynamic_get_req(struct http_resource_detail_dynamic *dynamic_detail,
 	/* offset tells from where the GET params start */
 	int ret, remaining, offset = dynamic_detail->common.path_len;
 	char *ptr;
-#define TEMP_BUF_LEN 64
 	char tmp[TEMP_BUF_LEN];
 
 	ret = sendall(client->fd, RESPONSE_TEMPLATE_CHUNKED,
@@ -761,8 +836,6 @@ int handle_http1_dynamic_resource(struct http_resource_detail_dynamic *dynamic_d
 				  struct http_client_ctx *client)
 {
 	uint32_t user_method;
-#define TEMP_BUF_LEN 64
-	char tmp[TEMP_BUF_LEN];
 	int ret;
 
 	if (dynamic_detail->cb == NULL) {
@@ -962,8 +1035,14 @@ int handle_http1_request(struct http_server_ctx *server, struct http_client_ctx 
 
 		if (detail->type == HTTP_RESOURCE_TYPE_STATIC) {
 			ret = handle_http1_static_resource(
-				(struct http_resource_detail_static *)detail,
-				client->fd);
+				(struct http_resource_detail_static *)detail, client->fd);
+			if (ret < 0) {
+				close_client_connection(server, client);
+				return ret;
+			}
+		} else if (detail->type == HTTP_RESOURCE_TYPE_STATIC_FS) {
+			ret = handle_http1_static_fs_resource(
+				(struct http_resource_detail_static_fs *)detail, client);
 			if (ret < 0) {
 				close_client_connection(server, client);
 				return ret;

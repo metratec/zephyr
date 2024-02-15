@@ -29,6 +29,7 @@
 
 enum http_resource_type {
 	HTTP_RESOURCE_TYPE_STATIC,
+	HTTP_RESOURCE_TYPE_STATIC_FS,
 	HTTP_RESOURCE_TYPE_DYNAMIC,
 	HTTP_RESOURCE_TYPE_REST,
 	HTTP_RESOURCE_TYPE_REST_JSON
@@ -47,6 +48,11 @@ struct http_resource_detail_static {
 	struct http_resource_detail common;
 	const void *static_data;
 	size_t static_data_len;
+};
+
+struct http_resource_detail_static_fs {
+	struct http_resource_detail common;
+	const char *path;
 };
 
 struct http_client_ctx;
