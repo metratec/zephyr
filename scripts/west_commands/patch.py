@@ -7,12 +7,17 @@ import hashlib
 import os
 import shlex
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
 import pykwalify.core
 import yaml
 from west.commands import WestCommand
+
+sys.path.append(os.fspath(Path(__file__).parent.parent))
+import zephyr_module
+from zephyr_ext_common import ZEPHYR_BASE
 
 try:
     from yaml import CSafeLoader as SafeLoader
@@ -25,9 +30,6 @@ with open(WEST_PATCH_SCHEMA_PATH) as f:
 
 WEST_PATCH_BASE = Path("zephyr") / "patches"
 WEST_PATCH_YAML = Path("zephyr") / "patches.yml"
-
-_WEST_MANIFEST_DIR = Path("WEST_MANIFEST_DIR")
-_WEST_TOPDIR = Path("WEST_TOPDIR")
 
 
 class Patch(WestCommand):
@@ -93,17 +95,21 @@ class Patch(WestCommand):
         parser.add_argument(
             "-b",
             "--patch-base",
-            help="Directory containing patch files",
+            help=f"""
+                Directory containing patch files (absolute or relative to module dir,
+                default: {WEST_PATCH_BASE})""",
             metavar="DIR",
-            default=_WEST_MANIFEST_DIR / WEST_PATCH_BASE,
+            default=None,
             type=Path,
         )
         parser.add_argument(
             "-l",
             "--patch-yml",
-            help="Path to patches.yml file",
+            help=f"""
+                Path to patches.yml file (absolute or relative to module dir,
+                default: {WEST_PATCH_YAML})""",
             metavar="FILE",
-            default=_WEST_MANIFEST_DIR / WEST_PATCH_YAML,
+            default=None,
             type=Path,
         )
         parser.add_argument(
@@ -111,20 +117,31 @@ class Patch(WestCommand):
             "--west-workspace",
             help="West workspace",
             metavar="DIR",
-            default=_WEST_TOPDIR,
+            default=None,
             type=Path,
         )
         parser.add_argument(
-            "-m",
-            "--module",
+            "-sm",
+            "--src-module",
+            dest="src_module",
+            metavar="MODULE",
+            type=str,
+            help="""
+                Zephyr module containing the patch definition (name, absolute path or
+                path relative to west-workspace)""",
+        )
+        parser.add_argument(
+            "-dm",
+            "--dst-module",
             action="append",
-            dest="modules",
-            metavar="DIR",
-            type=Path,
-            help="Zephyr module directory to run the 'patch' command for. "
-            "Option can be passed multiple times. "
-            "If this option is not given, the 'patch' command will run for Zephyr "
-            "and all modules.",
+            dest="dst_modules",
+            metavar="MODULE",
+            type=str,
+            help="""
+                Zephyr module to run the 'patch' command for.
+                Option can be passed multiple times.
+                If this option is not given, the 'patch' command will run for Zephyr
+                and all modules.""",
         )
 
         subparsers = parser.add_subparsers(
@@ -188,14 +205,36 @@ class Patch(WestCommand):
             self.die("could not retrieve manifest path from west configuration")
 
         topdir = Path(self.topdir)
-        manifest_dir = topdir / manifest_path
 
-        if args.patch_base.is_relative_to(_WEST_MANIFEST_DIR):
-            args.patch_base = manifest_dir / args.patch_base.relative_to(_WEST_MANIFEST_DIR)
-        if args.patch_yml.is_relative_to(_WEST_MANIFEST_DIR):
-            args.patch_yml = manifest_dir / args.patch_yml.relative_to(_WEST_MANIFEST_DIR)
-        if args.west_workspace.is_relative_to(_WEST_TOPDIR):
-            args.west_workspace = topdir / args.west_workspace.relative_to(_WEST_TOPDIR)
+        if args.src_module is not None:
+            mod_path = self.get_module_path(args.src_module)
+            if mod_path is None:
+                self.die(f'Source module "{args.src_module}" not found')
+            if args.patch_base is not None and args.patch_base.is_absolute():
+                self.die("patch-base must not be an absolute path in combination with src-module")
+            if args.patch_yml is not None and args.patch_yml.is_absolute():
+                self.die("patch-yml must not be an absolute path in combination with src-module")
+            manifest_dir = topdir / mod_path
+        else:
+            manifest_dir = topdir / manifest_path
+
+        if args.patch_base is None:
+            args.patch_base = manifest_dir / WEST_PATCH_BASE
+        if not args.patch_base.is_absolute():
+            args.patch_base = manifest_dir / args.patch_base
+
+        if args.patch_yml is None:
+            args.patch_yml = manifest_dir / WEST_PATCH_YAML
+        elif not args.patch_yml.is_absolute():
+            args.patch_yml = manifest_dir / args.patch_yml
+
+        if args.west_workspace is None:
+            args.west_workspace = topdir
+        elif not args.west_workspace.is_absolute():
+            args.west_workspace = topdir / args.west_workspace
+
+        for i, m in enumerate(args.dst_modules):
+            args.dst_modules[i] = self.get_module_path(m)
 
     def do_run(self, args, _):
         self.filter_args(args)
@@ -227,9 +266,9 @@ class Patch(WestCommand):
             "list": self.list,
         }
 
-        method[args.subcommand](args, yml, args.modules)
+        method[args.subcommand](args, yml, args.dst_modules)
 
-    def apply(self, args, yml, mods=None):
+    def apply(self, args, yml, dst_mods=None):
         patches = yml.get("patches", [])
         if not patches:
             return
@@ -239,8 +278,11 @@ class Patch(WestCommand):
         patched_mods = set()
 
         for patch_info in patches:
-            mod = Path(patch_info["module"])
-            if mods and mod not in mods:
+            mod = self.get_module_path(patch_info["module"])
+            if mod is None:
+                continue
+
+            if dst_mods and mod not in dst_mods:
                 continue
 
             pth = patch_info["path"]
@@ -301,7 +343,7 @@ class Patch(WestCommand):
 
         self.die(f"failed to apply patch {failed_patch}")
 
-    def clean(self, args, yml, mods=None):
+    def clean(self, args, yml, dst_mods=None):
         clean_cmd = yml["clean-command"]
         checkout_cmd = yml["checkout-command"]
 
@@ -312,9 +354,14 @@ class Patch(WestCommand):
         clean_cmd_list = shlex.split(clean_cmd)
         checkout_cmd_list = shlex.split(checkout_cmd)
 
-        for mod, mod_path in Patch.get_mod_paths(args, yml).items():
-            if mods and mod not in mods:
+        for mod in yml.get("patches", []):
+            m = self.get_module_path(mod.get("module"))
+            if m is None:
                 continue
+            if dst_mods and m not in dst_mods:
+                continue
+            mod_path = Path(args.west_workspace) / m
+
             try:
                 if checkout_cmd:
                     self.dbg(f"Running '{checkout_cmd}' in {mod}.. ", end="")
@@ -338,26 +385,33 @@ class Patch(WestCommand):
                 # If this fails for some reason, just log it and continue
                 self.err(f"failed to clean up {mod}: {e}")
 
-    def list(self, args, yml, mods=None):
+    def list(self, args, yml, dst_mods=None):
         patches = yml.get("patches", [])
         if not patches:
             return
 
         for patch_info in patches:
-            if mods and Path(patch_info["module"]) not in mods:
+            if dst_mods and self.get_module_path(patch_info["module"]) not in dst_mods:
                 continue
             self.inf(patch_info)
 
-    @staticmethod
-    def get_mod_paths(args, yml):
-        patches = yml.get("patches", [])
-        if not patches:
-            return {}
+    def get_module_path(self, module):
+        if module is None:
+            return None
 
-        mod_paths = {}
-        for patch_info in patches:
-            mod = Path(patch_info["module"])
-            mod_path = os.path.realpath(Path(args.west_workspace) / mod)
-            mod_paths[mod] = mod_path
+        topdir = Path(self.topdir)
 
-        return mod_paths
+        if Path(module).is_absolute():
+            if Path(module).is_dir():
+                return Path(module).resolve().relative_to(topdir)
+            return None
+
+        if (topdir / module).is_dir():
+            return Path(module)
+
+        all_modules = zephyr_module.parse_modules(ZEPHYR_BASE, self.manifest)
+        for m in all_modules:
+            if m.meta['name'] == module:
+                return Path(m.project).relative_to(topdir)
+
+        return None
