@@ -13,7 +13,7 @@
 
 LOG_MODULE_REGISTER(HC_SR04, CONFIG_SENSOR_LOG_LEVEL);
 
-#define HC_SR04_MM_PER_MS     171
+#define HC_SR04_MM_PER_MS 171
 
 static const uint32_t hw_cycles_per_ms = sys_clock_hw_cycles_per_sec() / 1000;
 
@@ -28,6 +28,7 @@ struct hcsr04_data {
 struct hcsr04_config {
 	struct gpio_dt_spec trigger_gpios;
 	struct gpio_dt_spec echo_gpios;
+	int echo_timeout_ms;
 };
 
 static void hcsr04_gpio_callback(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
@@ -66,7 +67,7 @@ static int hcsr04_configure_interrupt(const struct hcsr04_config *cfg, struct hc
 
 	/* Disable initially to avoid spurious interrupts. */
 	ret = gpio_pin_interrupt_configure(cfg->echo_gpios.port, cfg->echo_gpios.pin,
-		GPIO_INT_DISABLE);
+					   GPIO_INT_DISABLE);
 	if (ret < 0) {
 		LOG_ERR("Failed to configure '%s' as interrupt: %d", cfg->echo_gpios.port->name,
 			ret);
@@ -143,7 +144,7 @@ static int hcsr04_sample_fetch(const struct device *dev, enum sensor_channel cha
 		return ret;
 	}
 
-	if (k_sem_take(&data->sem, K_MSEC(10)) != 0) {
+	if (k_sem_take(&data->sem, &cfg->echo_timeout_ms) != 0) {
 		LOG_ERR("Echo signal was not received");
 		return -EIO;
 	}
@@ -151,7 +152,7 @@ static int hcsr04_sample_fetch(const struct device *dev, enum sensor_channel cha
 }
 
 static int hcsr04_channel_get(const struct device *dev, enum sensor_channel chan,
-	struct sensor_value *val)
+			      struct sensor_value *val)
 {
 	const struct hcsr04_data *data = dev->data;
 	uint32_t distance_mm;
@@ -160,30 +161,27 @@ static int hcsr04_channel_get(const struct device *dev, enum sensor_channel chan
 		return -ENOTSUP;
 	}
 
-	distance_mm = HC_SR04_MM_PER_MS * atomic_get(&data->echo_high_cycles) /
-			hw_cycles_per_ms;
+	distance_mm = HC_SR04_MM_PER_MS * atomic_get(&data->echo_high_cycles) / hw_cycles_per_ms;
 	return sensor_value_from_milli(val, distance_mm);
 }
 
-static DEVICE_API(sensor, hcsr04_driver_api) = {
-	.sample_fetch = hcsr04_sample_fetch,
-	.channel_get = hcsr04_channel_get
-};
+static DEVICE_API(sensor, hcsr04_driver_api) = {.sample_fetch = hcsr04_sample_fetch,
+						.channel_get = hcsr04_channel_get};
 
-
-#define HC_SR04_INIT(index)                                                           \
-	static struct hcsr04_data hcsr04_data_##index = {                             \
-		.dev = DEVICE_DT_INST_GET(index),                                     \
-		.start_cycles = 0,                                                    \
-		.echo_high_cycles = ATOMIC_INIT(0),                                   \
-	};                                                                            \
-	static struct hcsr04_config hcsr04_config_##index = {                         \
-		.trigger_gpios = GPIO_DT_SPEC_INST_GET(index, trigger_gpios),         \
-		.echo_gpios = GPIO_DT_SPEC_INST_GET(index, echo_gpios),               \
-	};                                                                            \
-                                                                                      \
-	SENSOR_DEVICE_DT_INST_DEFINE(index, &hcsr04_init, NULL, &hcsr04_data_##index, \
-				&hcsr04_config_##index, POST_KERNEL,                  \
-				CONFIG_SENSOR_INIT_PRIORITY, &hcsr04_driver_api);     \
+#define HC_SR04_INIT(index)                                                                        \
+	static struct hcsr04_data hcsr04_data_##index = {                                          \
+		.dev = DEVICE_DT_INST_GET(index),                                                  \
+		.start_cycles = 0,                                                                 \
+		.echo_high_cycles = ATOMIC_INIT(0),                                                \
+	};                                                                                         \
+	static struct hcsr04_config hcsr04_config_##index = {                                      \
+		.trigger_gpios = GPIO_DT_SPEC_INST_GET(index, trigger_gpios),                      \
+		.echo_gpios = GPIO_DT_SPEC_INST_GET(index, echo_gpios),                            \
+		.echo_timeout_ms = GPIO_DT_SPEC_INST_GET(index, echo_timeout_ms),                  \
+	};                                                                                         \
+                                                                                                   \
+	SENSOR_DEVICE_DT_INST_DEFINE(index, &hcsr04_init, NULL, &hcsr04_data_##index,              \
+				     &hcsr04_config_##index, POST_KERNEL,                          \
+				     CONFIG_SENSOR_INIT_PRIORITY, &hcsr04_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(HC_SR04_INIT)
