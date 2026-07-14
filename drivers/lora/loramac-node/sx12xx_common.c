@@ -34,6 +34,8 @@ static struct sx12xx_data {
 	struct k_poll_signal *operation_done;
 	lora_recv_cb async_rx_cb;
 	void *async_user_data;
+	lora_cad_cb async_cad_cb;
+	void *async_cad_data;
 	RadioEvents_t events;
 	struct lora_modem_config tx_cfg;
 	atomic_t modem_usage;
@@ -72,6 +74,16 @@ static inline bool modem_acquire(struct sx12xx_data *data)
 	return atomic_cas(&data->modem_usage, STATE_FREE, STATE_BUSY);
 }
 
+bool sx12xx_modem_acquire(void)
+{
+	return modem_acquire(&dev_data);
+}
+
+const struct lora_modem_config *sx12xx_get_tx_config(void)
+{
+	return &dev_data.tx_cfg;
+}
+
 /**
  * @brief Safely release the modem from any context
  *
@@ -95,6 +107,11 @@ static bool modem_release(struct sx12xx_data *data)
 	data->operation_done = NULL;
 	atomic_clear(&data->modem_usage);
 	return true;
+}
+
+bool sx12xx_modem_release(void)
+{
+	return modem_release(&dev_data);
 }
 
 static void sx12xx_ev_rx_done(uint8_t *payload, uint16_t size, int16_t rssi,
@@ -189,6 +206,35 @@ static void sx12xx_ev_rx_error(void)
 		if (sig) {
 			k_poll_signal_raise(sig, -EIO);
 		}
+	}
+}
+
+static void sx12xx_ev_cad_done(bool ca_detected)
+{
+	struct k_poll_signal *sig = dev_data.operation_done;
+
+	/* CAD in asynchronous mode */
+	if (dev_data.async_cad_cb) {
+		dev_data.async_cad_cb(dev_data.dev, ca_detected, dev_data.async_cad_data);
+		
+		dev_data.async_cad_cb = NULL;
+		dev_data.async_cad_data = NULL;
+
+		if (modem_release(&dev_data)) {
+			LOG_ERR("Failed to release modem after CAD");
+		}
+		return;
+	}
+
+	/* CAD in synchronous mode */
+	int cad_result = -EIO;
+
+	if (modem_release(&dev_data)) {
+		cad_result = (int)ca_detected;
+	}
+
+	if (sig) {
+		k_poll_signal_raise(sig, ca_detected);
 	}
 }
 
@@ -421,6 +467,69 @@ int sx12xx_lora_config(const struct device *dev,
 	return 0;
 }
 
+int sx126x_lora_cad_common(const struct device *dev, k_timeout_t timeout, bool acquire)
+{
+	struct k_poll_signal done = K_POLL_SIGNAL_INITIALIZER(done);
+	struct k_poll_event evt = K_POLL_EVENT_INITIALIZER(
+		K_POLL_TYPE_SIGNAL,
+		K_POLL_MODE_NOTIFY_ONLY,
+		&done);
+	int ret;
+
+	if (acquire && !modem_acquire(&dev_data)) {
+		return -EBUSY;
+	}
+
+	dev_data.async_cad_cb = NULL;
+	dev_data.operation_done = &done;
+
+
+	Radio.StartCad();
+
+	ret = k_poll(&evt, 1, timeout);
+	if (ret < 0) {
+		LOG_WRN("CAD poll error: %d", ret);
+		if (!modem_release(&dev_data)) {
+			LOG_WRN("Failed to release after CAD");
+		}
+		return ret;
+	}
+
+	LOG_INF("CAD result: %d", done.result);
+
+	return done.result;
+}
+
+int sx12xx_lora_cad_async_common(const struct device *dev, lora_cad_cb cb, void *user_data, bool acquire)
+{
+	ARG_UNUSED(dev);
+
+	/* Cancel ongoing cad */
+	if (cb == NULL) {
+		if (!modem_release(&dev_data)) {
+			/* Not running or already being stopped */
+			return -EINVAL;
+		}
+
+		dev_data.async_cad_cb = NULL;
+		dev_data.async_cad_data = NULL;
+
+		return 0;
+	}
+
+	/* Only acquire if not previously acquired */
+	if (acquire && !modem_acquire(&dev_data)) {
+		return -EBUSY;
+	}
+
+	dev_data.async_cad_cb = cb;
+	dev_data.async_cad_data = user_data;
+
+	Radio.StartCad();
+
+	return 0;
+}
+
 int sx12xx_lora_test_cw(const struct device *dev, uint32_t frequency,
 			int8_t tx_power,
 			uint16_t duration)
@@ -444,6 +553,7 @@ int sx12xx_init(const struct device *dev)
 	dev_data.events.RxError = sx12xx_ev_rx_error;
 	/* TX timeout event raises at the end of the test CW transmission */
 	dev_data.events.TxTimeout = sx12xx_ev_tx_timed_out;
+	dev_data.events.CadDone = sx12xx_ev_cad_done;
 	Radio.Init(&dev_data.events);
 
 	/*

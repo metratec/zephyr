@@ -39,6 +39,8 @@ BUILD_ASSERT(DT_NUM_INST_STATUS_OKAY(semtech_sx1261) +
 
 #define SX126X_CALIBRATION_ALL 0x7f
 
+#define SX126X_CAD_DET_MIN_DEFAULT 10
+
 static const struct sx126x_config dev_config = {
 	.bus = SPI_DT_SPEC_INST_GET(0, SPI_WORD_SET(8) | SPI_TRANSFER_MSB),
 #if HAVE_GPIO_ANTENNA_ENABLE
@@ -428,6 +430,83 @@ static void sx126x_dio1_irq_work_handler(struct k_work *work)
 	}
 }
 
+static RadioLoRaCadSymbols_t sx126x_cad_symbols(enum lora_cad_symbol_num n)
+{
+	switch (n) {
+	case LORA_CAD_SYMB_1:
+		return LORA_CAD_01_SYMBOL;
+	case LORA_CAD_SYMB_4:
+		return LORA_CAD_04_SYMBOL;
+	case LORA_CAD_SYMB_8:
+		return LORA_CAD_08_SYMBOL;
+	case LORA_CAD_SYMB_16:
+		return LORA_CAD_16_SYMBOL;
+	case LORA_CAD_SYMB_2:
+	default:
+		return LORA_CAD_02_SYMBOL;   /* driver default */
+	}
+}
+
+static uint8_t sx126x_det_peak_auto_lut[] =
+{
+	22, 22, 23, 24, 25, 28,
+};
+
+static int sx126x_prepare_cad(void)
+{
+	const struct lora_modem_config *cfg = sx12xx_get_tx_config();
+
+	uint8_t det_peak = cfg->cad.detection_peak;
+	uint8_t det_min = cfg->cad.detection_minimum;
+	RadioLoRaCadSymbols_t symbols = sx126x_cad_symbols(cfg->cad.symbol_num);
+
+
+	if (det_peak == 0) {
+		/* Auto derive from SF setting. Table is from AN1200.48 */
+		uint8_t sf = (uint8_t)cfg->datarate;
+
+		/* Cap datarate at table boundaries */
+		sf = MAX(SF_7, MIN(sf, SF_12)) - SF_7;
+
+		det_peak = sx126x_det_peak_auto_lut[sf];
+	}
+
+	if (det_min == 0) {
+		det_min = SX126X_CAD_DET_MIN_DEFAULT;
+	}
+
+	LOG_DBG("CAD Params: det_peak=%u, det_min=%u, symbol=0x%02X", det_peak, det_min, symbols);
+
+	if(!sx12xx_modem_acquire()) {
+		return -EBUSY;
+	}
+
+	/* Function is not available in Radio vtable. Timeout parameter is ignored in CAD_ONLY mode */
+	SX126xSetCadParams(symbols, det_peak, det_min, LORA_CAD_ONLY, 0);
+
+	return 0;
+}
+
+static int sx126x_lora_cad(const struct device *dev, k_timeout_t timeout)
+{
+	int ret = sx126x_prepare_cad();
+	if (ret != 0) {
+		return ret;
+	}
+
+	return sx126x_lora_cad_common(dev, timeout, false);
+}
+
+static int sx126x_lora_cad_async(const struct device *dev, lora_cad_cb cb, void *user_data)
+{
+	int ret = sx126x_prepare_cad();
+	if (ret != 0) {
+		return ret;
+	}
+
+	return sx12xx_lora_cad_async_common(dev, cb, user_data, false);
+}
+
 static int sx126x_lora_init(const struct device *dev)
 {
 	const struct sx126x_config *config = dev->config;
@@ -470,6 +549,8 @@ static DEVICE_API(lora, sx126x_lora_api) = {
 	.send_async = sx12xx_lora_send_async,
 	.recv = sx12xx_lora_recv,
 	.recv_async = sx12xx_lora_recv_async,
+	.cad = sx126x_lora_cad,
+	.cad_async = sx126x_lora_cad_async,
 	.test_cw = sx12xx_lora_test_cw,
 };
 
